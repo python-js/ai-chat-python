@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi import HTTPException
 
-from app.conversations import TITLE_MAX_LENGTH, assert_ownership, truncate_title
+from app.conversations import TITLE_MAX_LENGTH, assert_ownership, delete_conversation, truncate_title
 
 
 def test_truncate_title_short_unchanged():
@@ -52,3 +52,30 @@ async def test_assert_ownership_ok_when_not_exists():
     mock_pool.fetchrow.return_value = None
     with patch("app.conversations.get_pool", return_value=mock_pool):
         await assert_ownership("chat-1", "my-user")
+
+
+@pytest.mark.asyncio
+async def test_delete_conversation_true_when_exists():
+    # 第一次 fetchrow：归属查询；第二次：DELETE RETURNING id
+    mock_pool = AsyncMock()
+    mock_pool.fetchrow.side_effect = [{"userId": "my-user"}, {"id": "chat-1"}]
+    with patch("app.conversations.get_pool", return_value=mock_pool):
+        assert await delete_conversation("chat-1", "my-user") is True
+
+
+@pytest.mark.asyncio
+async def test_delete_conversation_false_when_missing():
+    mock_pool = AsyncMock()
+    mock_pool.fetchrow.side_effect = [None, None]
+    with patch("app.conversations.get_pool", return_value=mock_pool):
+        assert await delete_conversation("chat-1", "my-user") is False
+
+
+@pytest.mark.asyncio
+async def test_delete_conversation_403_when_not_owner():
+    mock_pool = AsyncMock()
+    mock_pool.fetchrow.return_value = {"userId": "other-user"}
+    with patch("app.conversations.get_pool", return_value=mock_pool):
+        with pytest.raises(HTTPException) as exc:
+            await delete_conversation("chat-1", "my-user")
+    assert exc.value.status_code == 403

@@ -3,6 +3,7 @@ export { Badge, badgeVariants } from "./badge";
 export { Button, buttonVariants } from "./button";
 export { Card, CardHeader, CardFooter, CardTitle, CardAction, CardDescription, CardContent } from "./card";
 export { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogOverlay, DialogPortal, DialogTitle, DialogTrigger } from "./dialog";
+export { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuPortal, DropdownMenuTrigger } from "./dropdown-menu";
 export { Input } from "./input";
 export { Label } from "./label";
 export { ScrollArea, ScrollBar } from "./scroll-area";

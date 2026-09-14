@@ -49,6 +49,14 @@ async def save_message(chat_id: str, role: str, content: str) -> None:
     )
 
 
+async def delete_conversation(conversation_id: str, user_id: str) -> bool:
+    """删除会话及其消息（Message 经外键 ON DELETE CASCADE 一并删除）。返回会话是否存在。"""
+    await assert_ownership(conversation_id, user_id)
+    pool = await get_pool()
+    row = await pool.fetchrow('DELETE FROM "Conversation" WHERE id = $1 RETURNING id', conversation_id)
+    return row is not None
+
+
 async def list_conversations(user_id: str) -> list[dict]:
     """当前用户的会话列表（按最近更新倒序），字段与 ConversationDto 对齐。"""
     pool = await get_pool()

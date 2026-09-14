@@ -9,9 +9,26 @@ import type { Conversation } from "@/hooks/use-conversations";
 
 // 容器：组合 Logo + 新对话 + 会话列表 + 导航 + 退出
 // initialConversations：SSR 注入的首屏数据（作为 SWR fallbackData，避免闪空）
-export default function Sidebar({ initialConversations }: { initialConversations: Conversation[] }) {
+// open/onClose：手机端抽屉开关（桌面端 md:static 恒显，位移状态无感）
+export default function Sidebar({
+  initialConversations,
+  open,
+  onClose,
+}: {
+  initialConversations: Conversation[];
+  open: boolean;
+  onClose: () => void;
+}) {
   return (
-    <aside className="flex w-64 flex-col border-r border-gray-200/80 bg-white">
+    <aside
+      className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-gray-200/80 bg-white shadow-xl transition-transform duration-200 md:static md:z-auto md:translate-x-0 md:shadow-none ${
+        open ? "translate-x-0" : "-translate-x-full"
+      }`}
+      onClick={(e) => {
+        // 手机端点击任意链接（新对话/会话/导航）后自动收起抽屉
+        if ((e.target as HTMLElement).closest("a")) onClose();
+      }}
+    >
       {/* Logo */}
       <div className="flex items-center gap-2.5 px-5 py-5">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-blue-600">

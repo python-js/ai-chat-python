@@ -1,7 +1,6 @@
-import { Suspense } from "react";
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
-import Sidebar from "./sidebar";
+import DashboardShell from "./dashboard-shell";
 import { fetchBackend } from "@/lib/backend";
 import type { Conversation } from "@/hooks/use-conversations";
 
@@ -17,13 +16,10 @@ export default async function DashboardLayout({
   // SSR 聚合：服务端 fetch Python 会话列表（cookie 转发），失败时降级为空列表
   const conversations = (await fetchBackend<Conversation[]>("/api/conversations")) ?? [];
 
+  // 布局壳为客户端组件（管理手机端抽屉状态），children 作为 RSC 槽位传入
   return (
-    <div className="flex h-screen overflow-hidden bg-[#f7f8fa]">
-      {/* Suspense 包裹：Sidebar 内部使用 useSearchParams 读取当前会话 id */}
-      <Suspense fallback={<aside className="w-64 border-r border-gray-200/80 bg-white" />}>
-        <Sidebar initialConversations={conversations} />
-      </Suspense>
-      <main className="flex flex-1 flex-col overflow-hidden">{children}</main>
-    </div>
+    <DashboardShell initialConversations={conversations}>
+      {children}
+    </DashboardShell>
   );
 }
