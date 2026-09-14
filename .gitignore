@@ -42,6 +42,12 @@ next-env.d.ts
 
 /app/generated/prisma
 
+# python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
 .qoder
 /docs
 
