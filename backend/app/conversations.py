@@ -3,14 +3,15 @@ import uuid
 
 from fastapi import HTTPException
 
+from .app_config import load_config
 from .db import get_pool
 
-# 会话标题截取首条提问的最大字符数（对齐 lib/config.ts conversation.titleMaxLength）
+# 会话标题截取首条提问的默认最大字符数（运行时以系统配置 chat.title_max_length 为准）
 TITLE_MAX_LENGTH = 20
 
 
-def truncate_title(title: str) -> str:
-    return title[:TITLE_MAX_LENGTH]
+def truncate_title(title: str, max_length: int = TITLE_MAX_LENGTH) -> str:
+    return title[:max_length]
 
 
 async def assert_ownership(chat_id: str, user_id: str) -> None:
@@ -24,6 +25,7 @@ async def assert_ownership(chat_id: str, user_id: str) -> None:
 async def touch_conversation(chat_id: str, user_id: str, title: str) -> None:
     """确保会话存在（不存在则以该用户身份创建），并刷新更新时间。"""
     await assert_ownership(chat_id, user_id)
+    config = await load_config()
     pool = await get_pool()
     await pool.execute(
         """
@@ -33,7 +35,7 @@ async def touch_conversation(chat_id: str, user_id: str, title: str) -> None:
         """,
         chat_id,
         user_id,
-        truncate_title(title),
+        truncate_title(title, config["chat.title_max_length"]),
     )
 
 

@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .db import close_pool
-from .routers import chat, conversations, documents, health
+from .routers import chat, config, conversations, documents, health
 
 
 @asynccontextmanager
@@ -25,5 +25,6 @@ app.add_middleware(
 
 app.include_router(health.router)
 app.include_router(chat.router)
+app.include_router(config.router)
 app.include_router(conversations.router)
 app.include_router(documents.router)

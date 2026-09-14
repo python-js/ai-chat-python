@@ -7,7 +7,7 @@ import DocumentList from "./components/document-list";
 // 容器：组合上传区 + 文档列表，不含业务细节
 export default function DocsClient() {
   return (
-    <ScrollArea className="flex-1">
+    <ScrollArea className="min-h-0 flex-1">
       <div className="mx-auto max-w-2xl px-6 py-8">
         <div className="mb-8">
           <h1 className="text-xl font-semibold text-gray-900">知识库管理</h1>

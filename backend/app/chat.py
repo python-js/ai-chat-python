@@ -13,9 +13,10 @@ import logging
 from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
 
+from .app_config import load_config
 from .conversations import save_message, touch_conversation
 from .llm import stream_chat
-from .prompts import build_chat_prompt, build_free_chat_prompt
+from .prompts import CONTEXT_PLACEHOLDER
 from .rag import search_similar
 
 logger = logging.getLogger(__name__)
@@ -74,15 +75,17 @@ async def stream_chat_sse(
         await save_message(chat_id, "user", query_text)
 
     is_chat_mode = mode == "chat"
+    config = await load_config()
     if is_chat_mode:
-        # 闲聊模式：跳过 RAG 检索，放开 prompt，联网搜索由请求体参数启用
-        system = build_free_chat_prompt()
-        enable_search = True
+        # 闲聊模式：跳过 RAG 检索，放开 prompt，联网搜索由系统配置开关控制
+        system = config["prompt.chat_system"]
+        enable_search = config["llm.enable_search"]
     else:
         # 知识库模式：RAG 检索并组装上下文（空知识库走兜底文案）
         chunks = await search_similar(query_text)
-        context = "\n\n---\n\n".join(chunks) if chunks else "（未找到相关文档内容）"
-        system = build_chat_prompt(context)
+        context = "\n\n---\n\n".join(chunks) if chunks else config["chat.empty_context_text"]
+        # replace 用回调形式，避免检索内容中的 $ 特殊序列被当作替换模式解释
+        system = config["prompt.rag_system"].replace(CONTEXT_PLACEHOLDER, lambda _m: context)
         enable_search = False
 
     model_messages = to_model_messages(messages)
@@ -93,8 +96,11 @@ async def stream_chat_sse(
             response = await stream_chat(
                 model_messages,
                 system=system,
+                model=config["llm.model"],
                 enable_search=enable_search,
                 enable_thinking=ENABLE_THINKING,
+                temperature=config["llm.temperature"],
+                max_tokens=config["llm.max_tokens"],
             )
             full_text = ""
             try:

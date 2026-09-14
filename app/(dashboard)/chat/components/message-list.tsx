@@ -10,10 +10,17 @@ interface MessageListProps {
   messages: UIMessage[];
   isLoading: boolean;
   bottomRef: RefObject<HTMLDivElement | null>;
+  // 空态欢迎语（由系统配置注入，未传时用内置默认值）
+  welcomeText?: string;
 }
 
 // 消息区：空态占位 / 消息流 / 加载动画，并锚定自动滚动到底部
-export default function MessageList({ messages, isLoading, bottomRef }: MessageListProps) {
+export default function MessageList({
+  messages,
+  isLoading,
+  bottomRef,
+  welcomeText = "有什么可以帮你的？",
+}: MessageListProps) {
   return (
     <ScrollArea className="min-h-0 flex-1">
       <div className="mx-auto max-w-[1024px] px-6 py-8"> 
@@ -24,7 +31,7 @@ export default function MessageList({ messages, isLoading, bottomRef }: MessageL
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456Z" />
               </svg>
             </div>
-            <h2 className="text-lg font-medium text-gray-800">有什么可以帮你的？</h2>
+            <h2 className="text-lg font-medium text-gray-800">{welcomeText}</h2>
             <p className="mt-2 text-sm text-gray-400">基于知识库为你解答问题</p>
           </div>
         )}

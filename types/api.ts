@@ -15,3 +15,25 @@ export interface DocumentDto {
   status: string;
   createdAt: Date;
 }
+
+// 系统配置（key 命名与 backend/app_config.py 的 DEFAULTS 对齐）
+export interface AppConfigValues {
+  "prompt.rag_system": string;
+  "prompt.chat_system": string;
+  "llm.model": string;
+  "llm.temperature": number | null;
+  "llm.max_tokens": number | null;
+  "llm.enable_search": boolean;
+  "rag.distance_threshold": number;
+  "rag.top_k": number;
+  "chat.title_max_length": number;
+  "chat.default_mode": "rag" | "chat";
+  "chat.welcome_text": string;
+  "chat.empty_context_text": string;
+}
+
+// GET/PUT /api/config 响应：values=当前生效值，defaults=内置默认值（供「恢复默认」）
+export interface AppConfigDto {
+  values: AppConfigValues;
+  defaults: AppConfigValues;
+}

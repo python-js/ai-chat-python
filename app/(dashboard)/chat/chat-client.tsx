@@ -12,17 +12,25 @@ import ChatInput from "./components/chat-input";
 interface ChatClientProps {
   chatId?: string;
   initialMessages?: UIMessage[];
+  // 以下两项由 chat/page.tsx SSR 注入（系统配置，失败时回退内置默认值）
+  defaultMode?: "rag" | "chat";
+  welcomeText?: string;
 }
 
 // 容器：编排 useChat 状态 + 子件渲染，不含 UI 细节
-export default function ChatClient({ chatId, initialMessages }: ChatClientProps) {
+export default function ChatClient({
+  chatId,
+  initialMessages,
+  defaultMode = "chat",
+  welcomeText = "有什么可以帮你的？",
+}: ChatClientProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const notifiedRef = useRef(false);
   const { mutate } = useSWRConfig();
   // 新会话（无 chatId）时本地生成稳定 id，作为会话主键发给服务端
   const [stableId] = useState(() => chatId ?? crypto.randomUUID());
-  // 对话模式：rag=知识库问答，chat=自由闲聊（默认，可联网搜索）
-  const [mode, setMode] = useState<"rag" | "chat">("chat");
+  // 对话模式：rag=知识库问答，chat=自由闲聊（默认模式由系统配置注入）
+  const [mode, setMode] = useState<"rag" | "chat">(defaultMode);
 
   const { messages, sendMessage, status } = useChat({
     id: stableId,
@@ -54,7 +62,12 @@ export default function ChatClient({ chatId, initialMessages }: ChatClientProps)
 
   return (
     <>
-      <MessageList messages={messages} isLoading={isLoading} bottomRef={bottomRef} />
+      <MessageList
+        messages={messages}
+        isLoading={isLoading}
+        bottomRef={bottomRef}
+        welcomeText={welcomeText}
+      />
       <ChatInput onSend={handleSend} disabled={isLoading} mode={mode} onModeChange={setMode} />
     </>
   );

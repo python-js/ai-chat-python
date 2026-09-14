@@ -52,6 +52,13 @@ model Conversation {
   @@index([userId, updatedAt])
 }
 
+// 系统配置表（key-value，value 为 JSON 字符串；读写全部在 Python 侧）
+model AppConfig {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
 // 消息表
 model Message {
   id             String       @id @default(cuid())

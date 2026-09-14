@@ -8,20 +8,30 @@ async function proxy(
 ) {
   const { path } = await params;
   const search = new URL(request.url).search;
-  const upstream = await fetch(`${BACKEND_URL}/api/${path.join("/")}${search}`, {
-    method: request.method,
-    headers: {
-      cookie: request.headers.get("cookie") ?? "",
-      "content-type": request.headers.get("content-type") ?? "",
-    },
-    body: ["GET", "HEAD"].includes(request.method) ? undefined : await request.arrayBuffer(),
-    // 客户端断开时同步中止上游生成，避免孤儿任务
-    signal: request.signal,
-  });
+  let upstream: Response;
+  try {
+    upstream = await fetch(`${BACKEND_URL}/api/${path.join("/")}${search}`, {
+      method: request.method,
+      headers: {
+        cookie: request.headers.get("cookie") ?? "",
+        "content-type": request.headers.get("content-type") ?? "",
+      },
+      body: ["GET", "HEAD"].includes(request.method) ? undefined : await request.arrayBuffer(),
+      // 客户端断开时同步中止上游生成，避免孤儿任务
+      signal: request.signal,
+    });
+  } catch (err) {
+    // 上游不可用（Python 未启动/重启中）：返回 502 并携带原因，避免裸 500 空响应
+    console.warn(`[bff] ${request.method} /api/${path.join("/")} 代理失败（Python 后端不可用？）:`, err);
+    return new Response(JSON.stringify({ detail: "后端服务不可用" }), {
+      status: 502,
+      headers: { "content-type": "application/json" },
+    });
+  }
   return new Response(upstream.body, {
     status: upstream.status,
     headers: { "content-type": upstream.headers.get("content-type") ?? "application/json" },
   });
 }
 
-export { proxy as GET, proxy as POST, proxy as DELETE };
+export { proxy as GET, proxy as POST, proxy as PUT, proxy as DELETE };

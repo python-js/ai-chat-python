@@ -31,8 +31,11 @@ async def stream_chat(
     messages: list[dict],
     *,
     system: str,
+    model: str,
     enable_search: bool = False,
     enable_thinking: bool | None = None,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
 ) -> httpx.Response:
     """发起流式 chat/completions 请求，返回未读完的流式响应（调用方迭代后需 aclose）。
 
@@ -40,7 +43,7 @@ async def stream_chat(
     导致 SSE 被整体缓冲、前端一次性收到全部内容。
     """
     body: dict = {
-        "model": settings.llm_model,
+        "model": model,
         "messages": [{"role": "system", "content": system}, *messages],
         "stream": True,
     }
@@ -48,6 +51,10 @@ async def stream_chat(
         body["enable_search"] = True
     if enable_thinking is not None:
         body["enable_thinking"] = enable_thinking
+    if temperature is not None:
+        body["temperature"] = temperature
+    if max_tokens is not None:
+        body["max_tokens"] = max_tokens
     client = _client()
     request = client.build_request("POST", "/chat/completions", json=body)
     response = await client.send(request, stream=True)

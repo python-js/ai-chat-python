@@ -1,4 +1,5 @@
 import { fetchBackend } from "@/lib/backend";
+import type { AppConfigDto } from "@/types/api";
 import ChatClient from "./chat-client";
 import type { UIMessage } from "ai";
 
@@ -28,6 +29,19 @@ export default async function ChatPage({
     }));
   }
 
+  // 系统配置注入：默认对话模式与欢迎语（后端不可用时回退内置默认值）
+  const config = await fetchBackend<AppConfigDto>("/api/config");
+  const defaultMode = config?.values["chat.default_mode"] ?? "chat";
+  const welcomeText = config?.values["chat.welcome_text"] ?? "有什么可以帮你的？";
+
   // key 保证切换会话时组件重挂载，重置 useChat 状态
-  return <ChatClient key={id ?? "new"} chatId={id} initialMessages={initialMessages} />;
+  return (
+    <ChatClient
+      key={id ?? "new"}
+      chatId={id}
+      initialMessages={initialMessages}
+      defaultMode={defaultMode}
+      welcomeText={welcomeText}
+    />
+  );
 }
