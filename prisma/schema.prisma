@@ -1,0 +1,65 @@
+generator client {
+  provider        = "prisma-client"
+  output          = "../app/generated/prisma"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  extensions = [vector]
+}
+
+// 用户表
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// 文档表
+model Document {
+  id        String           @id @default(cuid())
+  filename  String
+  fileType  String // "pdf" | "markdown"
+  content   String? // 原始文本内容
+  status    String           @default("pending") // pending | processing | ready | error
+  createdAt DateTime         @default(now())
+  chunks    DocumentChunk[]
+}
+
+// 文档分块 + 向量
+model DocumentChunk {
+  id         String   @id @default(cuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  content    String
+  embedding  Unsupported("vector(1024)")? // 百炼 text-embedding-v3 输出 1024 维
+  createdAt  DateTime @default(now())
+}
+
+// 会话表
+model Conversation {
+  id        String    @id @default(cuid())
+  userId    String
+  title     String    @default("新对话")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  messages  Message[]
+
+  @@index([userId, updatedAt])
+}
+
+// 消息表
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String // "user" | "assistant"
+  content        String
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId, createdAt])
+}
