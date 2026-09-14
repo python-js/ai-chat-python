@@ -20,6 +20,9 @@ def _client() -> httpx.AsyncClient:
             base_url=settings.dashscope_base_url,
             headers={"Authorization": f"Bearer {settings.dashscope_api_key}"},
             timeout=httpx.Timeout(300, connect=10),
+            # Vercel 沙箱无 IPv6 出网且不快速失败：强制绑定 IPv4 源地址，
+            # 使域名（含 AAAA 记录）的 IPv6 尝试立即失败并快速回退 IPv4
+            transport=httpx.AsyncHTTPTransport(local_address="0.0.0.0"),
         )
     return _http_client
 
