@@ -2,15 +2,17 @@ import type { ChatTransport, UIMessage, UIMessageChunk } from "ai";
 
 // 后端 SSE 事件（与 FastAPI chat.py 约定一致）
 interface SseEvent {
-  type: "start" | "delta" | "reasoning_delta" | "done" | "error";
+  type: "start" | "delta" | "reasoning_delta" | "done" | "error" | "card";
   text?: string;
   message?: string;
+  data?: unknown; // card 事件载荷（结构化卡片数据，见 types/api.ts OrderCardData）
 }
 
 /**
  * 自定义 SSE transport：fetch /api/python/chat（Next rewrites 代理到 FastAPI），
  * 把后端 SSE 事件流转换为 AI SDK v7 的 UIMessageChunk 流。
- * delta → text part，reasoning_delta → reasoning part（前端已有折叠渲染，零改动）。
+ * delta → text part，reasoning_delta → reasoning part（前端已有折叠渲染，零改动），
+ * card → data-order part（message-item 渲染为订单卡片，可多次推送）。
  */
 export const sseTransport: ChatTransport<UIMessage> = {
   async sendMessages({ chatId, messages, body, abortSignal }) {
@@ -68,6 +70,10 @@ export const sseTransport: ChatTransport<UIMessage> = {
                   if (textStarted) controller.enqueue({ type: "text-end", id: partId });
                   if (reasoningStarted) controller.enqueue({ type: "reasoning-end", id: partId });
                   controller.enqueue({ type: "finish", finishReason: "stop" });
+                  break;
+                case "card":
+                  // 工具查询结果 → AI SDK data part（每次独立 id，支持多卡片先后落入 parts）
+                  controller.enqueue({ type: "data-order", id: crypto.randomUUID(), data: event.data });
                   break;
                 case "error":
                   controller.enqueue({ type: "error", errorText: event.message ?? "服务端错误" });

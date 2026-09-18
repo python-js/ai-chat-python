@@ -22,5 +22,12 @@ class Settings(BaseSettings):
     rag_distance_threshold: float = 0.5
     auth_secret: str
 
+    # MySQL 订单数据源（只读）。host/user/database 三项齐全才启用订单工具，缺省=功能关闭
+    mysql_host: str = ""
+    mysql_port: int = 3306
+    mysql_user: str = ""
+    mysql_password: str = ""
+    mysql_database: str = ""
+
 
 settings = Settings()

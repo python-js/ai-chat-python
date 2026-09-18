@@ -37,3 +37,25 @@ export interface AppConfigDto {
   values: AppConfigValues;
   defaults: AppConfigValues;
 }
+
+// ===== Agent 订单卡片（与 backend/app/tools.py _row_to_order 字段一致） =====
+
+// 订单卡片条目
+export interface OrderCardItem {
+  orderId: string;
+  status: string;
+  customerName: string;
+  customerPhone: string;
+  productName: string;
+  quantity: number;
+  amount: number;
+  trackingNo: string | null;
+  createdAt: string;
+  shippedAt: string | null;
+}
+
+// 卡片数据（kind 区分卡片类型，为后续多类型卡片预留；data-order part 与 Message.cardData 共用）
+export interface OrderCardData {
+  kind: "orders";
+  orders: OrderCardItem[];
+}

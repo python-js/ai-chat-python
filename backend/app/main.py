@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .db import close_pool
+from .mysql import close_pool as close_mysql_pool
 from .routers import chat, config, conversations, documents, health
 
 
@@ -11,6 +12,7 @@ from .routers import chat, config, conversations, documents, health
 async def lifespan(app: FastAPI):
     yield
     await close_pool()
+    await close_mysql_pool()
 
 
 app = FastAPI(title="AI Chat Backend", lifespan=lifespan)

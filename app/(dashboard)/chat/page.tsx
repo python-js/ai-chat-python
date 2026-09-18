@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { fetchBackend } from "@/lib/backend";
-import type { AppConfigDto } from "@/types/api";
+import type { AppConfigDto, OrderCardData } from "@/types/api";
 import ChatClient from "./chat-client";
 import ChatLoading from "./loading";
 import type { UIMessage } from "ai";
@@ -10,6 +10,7 @@ interface MessageDto {
   id: string;
   role: string;
   content: string;
+  cardData?: OrderCardData[] | null; // 历史订单卡片（工具查询结果，落库于 Message.cardData）
 }
 
 // 切换会话属于同段 searchParams 导航（React 对已挂载边界保持旧内容，loading.tsx 不生效），
@@ -39,7 +40,15 @@ async function ChatContent({ id }: { id?: string }) {
     initialMessages = (msgs ?? []).map((m) => ({
       id: m.id,
       role: m.role as "user" | "assistant",
-      parts: [{ type: "text" as const, text: m.content }],
+      // 恢复顺序：卡片 data part 在前、文本 part 在后，与流式渲染顺序一致
+      parts: [
+        ...(m.cardData ?? []).map((card, i) => ({
+          type: "data-order" as const,
+          id: `${m.id}-card-${i}`,
+          data: card,
+        })),
+        { type: "text" as const, text: m.content },
+      ],
     }));
   }
 

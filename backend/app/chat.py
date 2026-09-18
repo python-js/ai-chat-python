@@ -4,6 +4,7 @@ SSE 事件格式（自定义协议，前端 sse-transport 消费）：
     data: {"type":"start"}
     data: {"type":"reasoning_delta","text":"..."}
     data: {"type":"delta","text":"..."}
+    data: {"type":"card","data":{...}}     ← 工具查询结果（结构化卡片，可多次）
     data: {"type":"done","text":"完整回答"}
 失败时输出 data: {"type":"error","message":"..."}
 """
@@ -16,8 +17,10 @@ from fastapi.responses import StreamingResponse
 from .app_config import load_config
 from .conversations import save_message, touch_conversation
 from .llm import stream_chat
+from .mysql import is_enabled as mysql_enabled
 from .prompts import CONTEXT_PLACEHOLDER
 from .rag import search_similar
+from .tools import TOOLS, execute_tool
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +29,10 @@ CHAT_MODES = ("rag", "chat")
 
 # 前置检查结论（见 scripts/precheck.py）：当前模型默认输出 reasoning_content，无需 enable_thinking
 ENABLE_THINKING: bool | None = None
+
+# Agent 循环最大 LLM 调用次数（最小 Agent：最多 1 次工具执行 + 1 次总结收尾）。
+# 最后一轮强制 tool_choice=none，确保「查到数据必有回答」；后续调大即可支持多步工具组合
+MAX_STEPS = 2
 
 
 def extract_text(message: dict) -> str:
@@ -62,7 +69,11 @@ async def stream_chat_sse(
     messages: list[dict],
     mode: str,
 ) -> StreamingResponse:
-    """校验 → 持久化用户消息 → RAG 检索/自由对话 → 流式生成 → 持久化 AI 回复。"""
+    """校验 → 持久化用户消息 → RAG 检索/自由对话 → Agent 循环流式生成 → 持久化 AI 回复。
+
+    chat 模式且 MySQL 已配置时注册订单工具：循环 = LLM（流式）→ 工具执行 → card 事件 → 再 LLM，
+    最多 MAX_STEPS 轮；无工具调用时第一轮即结束（对普通问法零额外开销）。
+    """
     if not messages:
         raise HTTPException(status_code=400, detail="消息为空")
     query_text = extract_text(messages[-1])
@@ -88,46 +99,102 @@ async def stream_chat_sse(
         system = config["prompt.rag_system"].replace(CONTEXT_PLACEHOLDER, lambda _m: context)
         enable_search = False
 
+    # 订单工具仅在 chat 模式且 MySQL 配置齐全时注册；rag 模式与未配置时链路与原先完全一致
+    tools = TOOLS if (is_chat_mode and mysql_enabled()) else None
+
     model_messages = to_model_messages(messages)
 
     async def event_stream():
         try:
             yield _sse({"type": "start"})
-            response = await stream_chat(
-                model_messages,
-                system=system,
-                model=config["llm.model"],
-                enable_search=enable_search,
-                enable_thinking=ENABLE_THINKING,
-                temperature=config["llm.temperature"],
-                max_tokens=config["llm.max_tokens"],
-            )
+            cards: list[dict] = []
             full_text = ""
-            try:
-                async for line in response.aiter_lines():
-                    if not line.startswith("data:"):
-                        continue
-                    data = line[5:].strip()
-                    if data == "[DONE]":
-                        break
-                    chunk = json.loads(data)
-                    choices = chunk.get("choices")
-                    if not choices:
-                        # 空 choices chunk（心跳/元数据），跳过，否则索引越界
-                        continue
-                    delta = choices[0].get("delta", {})
-                    reasoning = delta.get("reasoning_content")
-                    if reasoning:
-                        yield _sse({"type": "reasoning_delta", "text": reasoning})
-                    content = delta.get("content")
-                    if content:
-                        full_text += content
-                        yield _sse({"type": "delta", "text": content})
-            finally:
-                await response.aclose()
-            # 仅最终文本落库，推理过程不持久化（与现状一致）
-            if chat_id and full_text:
-                await save_message(chat_id, "assistant", full_text)
+
+            for step in range(MAX_STEPS):
+                is_last = step == MAX_STEPS - 1
+                # 最后一轮强制文本输出（tool_choice=none），避免「查到数据却无回答」
+                response = await stream_chat(
+                    model_messages,
+                    system=system,
+                    model=config["llm.model"],
+                    enable_search=enable_search,
+                    enable_thinking=ENABLE_THINKING,
+                    temperature=config["llm.temperature"],
+                    max_tokens=config["llm.max_tokens"],
+                    tools=tools,
+                    tool_choice="none" if (tools and is_last) else None,
+                )
+                # 本轮流解析：tool_calls 按 index 拼装分片；content/reasoning 实时转发
+                #（流式期间无法预知本轮是否调工具，实测模型调工具前 content 为空，直接转发无损体验）
+                tool_calls: dict[int, dict] = {}
+                try:
+                    async for line in response.aiter_lines():
+                        if not line.startswith("data:"):
+                            continue
+                        data = line[5:].strip()
+                        if data == "[DONE]":
+                            break
+                        chunk = json.loads(data)
+                        choices = chunk.get("choices")
+                        if not choices:
+                            # 空 choices chunk（心跳/元数据），跳过，否则索引越界
+                            continue
+                        delta = choices[0].get("delta", {})
+                        reasoning = delta.get("reasoning_content")
+                        if reasoning:
+                            yield _sse({"type": "reasoning_delta", "text": reasoning})
+                        content = delta.get("content")
+                        if content:
+                            full_text += content
+                            yield _sse({"type": "delta", "text": content})
+                        for tc in delta.get("tool_calls") or []:
+                            slot = tool_calls.setdefault(
+                                tc.get("index", 0), {"id": "", "name": "", "arguments": ""}
+                            )
+                            if tc.get("id"):
+                                slot["id"] += tc["id"]
+                            fn = tc.get("function") or {}
+                            if fn.get("name"):
+                                slot["name"] += fn["name"]
+                            if fn.get("arguments"):
+                                slot["arguments"] += fn["arguments"]
+                finally:
+                    await response.aclose()
+
+                if not tool_calls:
+                    break  # 无工具调用（或工具未启用）：本轮内容即最终回答
+
+                # 执行工具（预定义只读 SQL）→ 卡片推前端 → 结果拼回对话，进入下一轮总结
+                assistant_tool_calls = []
+                tool_messages = []
+                for _idx, slot in sorted(tool_calls.items()):
+                    result = await execute_tool(slot["name"], slot["arguments"])
+                    if result.get("card"):
+                        cards.append(result["card"])
+                        yield _sse({"type": "card", "data": result["card"]})
+                    # 失败/未找到的结果同样喂回模型，由模型向用户说明（链路不中断）
+                    tool_content = json.dumps(
+                        result.get("card") or {"message": result.get("message") or "查询无结果"},
+                        ensure_ascii=False,
+                    )
+                    assistant_tool_calls.append(
+                        {
+                            "id": slot["id"],
+                            "type": "function",
+                            "function": {"name": slot["name"], "arguments": slot["arguments"]},
+                        }
+                    )
+                    tool_messages.append(
+                        {"role": "tool", "tool_call_id": slot["id"], "content": tool_content}
+                    )
+                model_messages.append(
+                    {"role": "assistant", "content": "", "tool_calls": assistant_tool_calls}
+                )
+                model_messages.extend(tool_messages)
+
+            # 仅最终文本与卡片落库，推理过程不持久化（与现状一致）
+            if chat_id and (full_text or cards):
+                await save_message(chat_id, "assistant", full_text, card_data=cards or None)
             yield _sse({"type": "done", "text": full_text})
         except Exception as e:
             logger.exception("聊天流式处理失败")

@@ -1,4 +1,5 @@
 """会话/消息数据访问：对齐 conversation.service.ts（含归属校验与标题截断）。"""
+import json
 import uuid
 
 from fastapi import HTTPException
@@ -39,15 +40,17 @@ async def touch_conversation(chat_id: str, user_id: str, title: str) -> None:
     )
 
 
-async def save_message(chat_id: str, role: str, content: str) -> None:
-    """保存一条消息（user / assistant 通用）。"""
+async def save_message(chat_id: str, role: str, content: str, card_data: list[dict] | None = None) -> None:
+    """保存一条消息（user / assistant 通用）；card_data 为助手消息附带的结构化卡片（可选）。"""
     pool = await get_pool()
     await pool.execute(
-        'INSERT INTO "Message" (id, "conversationId", role, content, "createdAt") VALUES ($1, $2, $3, $4, NOW())',
+        'INSERT INTO "Message" (id, "conversationId", role, content, "cardData", "createdAt") '
+        "VALUES ($1, $2, $3, $4, $5::jsonb, NOW())",
         str(uuid.uuid4()),
         chat_id,
         role,
         content,
+        json.dumps(card_data, ensure_ascii=False) if card_data else None,
     )
 
 
@@ -72,10 +75,10 @@ async def list_conversations(user_id: str) -> list[dict]:
 
 
 async def list_messages(conversation_id: str) -> list[dict]:
-    """会话消息历史（按时间正序），字段：id/role/content/createdAt。"""
+    """会话消息历史（按时间正序），字段：id/role/content/cardData/createdAt。"""
     pool = await get_pool()
     rows = await pool.fetch(
-        'SELECT id, role, content, "createdAt" FROM "Message" WHERE "conversationId" = $1 ORDER BY "createdAt" ASC',
+        'SELECT id, role, content, "cardData", "createdAt" FROM "Message" WHERE "conversationId" = $1 ORDER BY "createdAt" ASC',
         conversation_id,
     )
     return [
@@ -83,6 +86,8 @@ async def list_messages(conversation_id: str) -> list[dict]:
             "id": r["id"],
             "role": r["role"],
             "content": r["content"],
+            # asyncpg 对 jsonb 返回字符串，解析为对象给前端（NULL 保持 None）
+            "cardData": json.loads(r["cardData"]) if r["cardData"] else None,
             "createdAt": r["createdAt"].isoformat(),
         }
         for r in rows

@@ -3,12 +3,23 @@
 import { memo, useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import type { UIMessage } from "ai";
+import type { OrderCardData } from "@/types/api";
 import AiAvatar from "./ai-avatar";
+import OrderCard from "./order-card";
 
 // 从消息 parts 中提取纯文本
 function extractText(message: UIMessage): string {
   return (
     message.parts?.filter((p): p is { type: "text"; text: string } => p.type === "text").map((p) => p.text).join("") || ""
+  );
+}
+
+// 从消息 parts 中提取订单卡片数据（data-order part，Agent 工具查询结果，可多张）
+function extractCards(message: UIMessage): OrderCardData[] {
+  return (
+    message.parts
+      ?.filter((p): p is { type: "data-order"; data: OrderCardData } => p.type === "data-order")
+      .map((p) => p.data) || []
   );
 }
 
@@ -51,6 +62,7 @@ function ReasoningBlock({ text }: { text: string }) {
 function MessageItem({ message }: { message: UIMessage }) {
   const text = extractText(message);
   const reasoning = extractReasoning(message);
+  const cards = extractCards(message);
   console.log("MessageItem", message);
   if (message.role === "user") {
     return (
@@ -67,6 +79,9 @@ function MessageItem({ message }: { message: UIMessage }) {
       <AiAvatar />
       <div className="min-w-0 flex-1 rounded-2xl rounded-tl-md border border-gray-100 bg-white px-5 py-4 shadow-sm">
         <ReasoningBlock text={reasoning} />
+        {cards.map((card, i) => (
+          <OrderCard key={i} data={card} />
+        ))}
         <div className="prose prose-sm max-w-none prose-headings:text-gray-800 prose-p:text-gray-600 prose-p:leading-relaxed prose-pre:bg-gray-900 prose-pre:text-gray-100 prose-code:text-violet-600 prose-code:before:content-none prose-code:after:content-none prose-a:text-blue-600 prose-strong:text-gray-800">
           <ReactMarkdown>{text}</ReactMarkdown>
         </div>

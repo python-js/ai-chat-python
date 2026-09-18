@@ -4,6 +4,8 @@ uvicorn[standard]>=0.30
 python-multipart>=0.0.9
 httpx>=0.27
 asyncpg>=0.29
+# MySQL 订单数据源（只读查询，Agent 工具层使用）
+aiomysql>=0.2
 cryptography>=42
 pypdf>=4.2
 pydantic-settings>=2.3

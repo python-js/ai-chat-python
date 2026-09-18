@@ -69,6 +69,7 @@ model Message {
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   role           String // "user" | "assistant"
   content        String
+  cardData       Json? // 助手消息附带的结构化卡片数组（订单卡片等；NULL = 纯文字消息）
   createdAt      DateTime     @default(now())
 
   @@index([conversationId, createdAt])

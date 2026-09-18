@@ -40,6 +40,8 @@ async def stream_chat(
     enable_thinking: bool | None = None,
     temperature: float | None = None,
     max_tokens: int | None = None,
+    tools: list[dict] | None = None,
+    tool_choice: str | None = None,
 ) -> httpx.Response:
     """发起流式 chat/completions 请求，返回未读完的流式响应（调用方迭代后需 aclose）。
 
@@ -59,6 +61,10 @@ async def stream_chat(
         body["temperature"] = temperature
     if max_tokens is not None:
         body["max_tokens"] = max_tokens
+    if tools:
+        body["tools"] = tools
+    if tool_choice is not None:
+        body["tool_choice"] = tool_choice
     client = _client()
     request = client.build_request("POST", "/chat/completions", json=body)
     response = await client.send(request, stream=True)
