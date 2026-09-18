@@ -76,6 +76,29 @@ async def stream_chat(
     return response
 
 
+async def complete_chat(
+    messages: list[dict],
+    *,
+    system: str,
+    model: str,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
+) -> str:
+    """非流式 chat/completions：一次返回完整回答文本（用于会话摘要等短任务）。"""
+    body: dict = {
+        "model": model,
+        "messages": [{"role": "system", "content": system}, *messages],
+        "stream": False,
+    }
+    if temperature is not None:
+        body["temperature"] = temperature
+    if max_tokens is not None:
+        body["max_tokens"] = max_tokens
+    resp = await _client().post("/chat/completions", json=body)
+    resp.raise_for_status()
+    return resp.json()["choices"][0]["message"]["content"]
+
+
 async def embed_texts(values: list[str]) -> list[list[float]]:
     """分批生成 embedding 向量（对齐 embedder.ts 分批语义）。"""
     results: list[list[float]] = []

@@ -31,8 +31,10 @@ export default function ChatClient({
   const [stableId] = useState(() => chatId ?? crypto.randomUUID());
   // 对话模式：rag=知识库问答，chat=自由闲聊（默认模式由系统配置注入）
   const [mode, setMode] = useState<"rag" | "chat">(defaultMode);
+  const [compressLoading, setCompressLoading] = useState(false);
+  const [compressFailed, setCompressFailed] = useState(false);
 
-  const { messages, sendMessage, status } = useChat({
+  const { messages, sendMessage, status, stop } = useChat({
     id: stableId,
     // AI SDK v7 的 ChatInit 用 messages 字段接收初始消息（旧版 initialMessages 已废弃，会被静默忽略）
     messages: initialMessages,
@@ -60,6 +62,22 @@ export default function ChatClient({
     sendMessage({ text }, { body: { mode } });
   }
 
+  // 手动压缩上下文：仅按钮反馈（成功无提示；失败文案短暂变红后恢复）
+  async function handleCompress() {
+    setCompressLoading(true);
+    setCompressFailed(false);
+    try {
+      const res = await fetch(`/api/python/conversations/${stableId}/compress`, { method: "POST" });
+      if (!res.ok) throw new Error(`压缩失败: HTTP ${res.status}`);
+    } catch (err) {
+      console.warn("[chat] 压缩上下文失败：", err);
+      setCompressFailed(true);
+      setTimeout(() => setCompressFailed(false), 2500);
+    } finally {
+      setCompressLoading(false);
+    }
+  }
+
   return (
     <>
       <MessageList
@@ -68,7 +86,18 @@ export default function ChatClient({
         bottomRef={bottomRef}
         welcomeText={welcomeText}
       />
-      <ChatInput onSend={handleSend} disabled={isLoading} mode={mode} onModeChange={setMode} />
+      {/* 压缩禁用条件与后端 KEEP_RECENT=4 对齐：消息不足或会话进行中不可压缩 */}
+      <ChatInput
+        onSend={handleSend}
+        onStop={stop}
+        disabled={isLoading}
+        mode={mode}
+        onModeChange={setMode}
+        onCompress={handleCompress}
+        compressDisabled={compressLoading || messages.length <= 4 || status !== "ready"}
+        compressLoading={compressLoading}
+        compressFailed={compressFailed}
+      />
     </>
   );
 }

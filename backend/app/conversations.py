@@ -92,3 +92,48 @@ async def list_messages(conversation_id: str) -> list[dict]:
         }
         for r in rows
     ]
+
+
+async def get_conversation_meta(conversation_id: str) -> dict | None:
+    """会话摘要与压缩点（NULL = 未压缩）；会话不存在返回 None。"""
+    pool = await get_pool()
+    row = await pool.fetchrow(
+        'SELECT "summary", "summaryUpToId" FROM "Conversation" WHERE id = $1', conversation_id
+    )
+    if row is None:
+        return None
+    return {"summary": row["summary"], "summaryUpToId": row["summaryUpToId"]}
+
+
+async def save_summary(conversation_id: str, summary: str, summary_up_to_id: str) -> None:
+    """保存压缩结果：摘要 + 压缩点（被压缩的最后一条消息 id）。"""
+    pool = await get_pool()
+    await pool.execute(
+        'UPDATE "Conversation" SET "summary" = $2, "summaryUpToId" = $3, "updatedAt" = NOW() '
+        "WHERE id = $1",
+        conversation_id,
+        summary,
+        summary_up_to_id,
+    )
+
+
+async def list_context_messages(conversation_id: str, summary_up_to_id: str | None) -> list[dict]:
+    """模型上下文用消息（按时间正序，仅 role/content）：有压缩点时只取其后消息。
+
+    消息 id 由后端落库时生成（与前端 id 无关），压缩点过滤只信任 DB 时间序。
+    """
+    pool = await get_pool()
+    if summary_up_to_id:
+        rows = await pool.fetch(
+            'SELECT role, content FROM "Message" WHERE "conversationId" = $1 '
+            'AND "createdAt" > (SELECT "createdAt" FROM "Message" WHERE id = $2) '
+            'ORDER BY "createdAt" ASC',
+            conversation_id,
+            summary_up_to_id,
+        )
+    else:
+        rows = await pool.fetch(
+            'SELECT role, content FROM "Message" WHERE "conversationId" = $1 ORDER BY "createdAt" ASC',
+            conversation_id,
+        )
+    return [{"role": r["role"], "content": r["content"]} for r in rows if r["content"]]

@@ -8,7 +8,7 @@ import time
 
 from .config import settings
 from .db import get_pool
-from .prompts import CONTEXT_PLACEHOLDER, DEFAULT_CHAT_SYSTEM, DEFAULT_RAG_SYSTEM
+from .prompts import CONTEXT_PLACEHOLDER, DEFAULT_CHAT_SYSTEM, DEFAULT_RAG_SYSTEM, DEFAULT_SUMMARY_PROMPT
 
 # 缓存有效期（秒）：保存后仅失效本实例缓存，多实例下其他实例最多延迟该时长生效
 CACHE_TTL = 30
@@ -17,9 +17,11 @@ CACHE_TTL = 30
 DEFAULTS: dict = {
     "prompt.rag_system": DEFAULT_RAG_SYSTEM,
     "prompt.chat_system": DEFAULT_CHAT_SYSTEM,
+    "prompt.summary": DEFAULT_SUMMARY_PROMPT,
     "llm.model": settings.llm_model,
     "llm.temperature": None,  # None = 不传该参数，走百炼默认
     "llm.max_tokens": None,
+    "llm.context_max_chars": 60000,  # 输入上下文预算（字符）：超限时从最早消息静默丢弃
     "llm.enable_search": True,
     "rag.distance_threshold": settings.rag_distance_threshold,
     "rag.top_k": 5,
@@ -42,7 +44,7 @@ def _validate(key: str, value) -> None:
     if key not in DEFAULTS:
         raise ValueError(f"未知配置项：{key}")
 
-    if key in ("prompt.rag_system", "prompt.chat_system", "llm.model", "chat.welcome_text", "chat.empty_context_text"):
+    if key in ("prompt.rag_system", "prompt.chat_system", "prompt.summary", "llm.model", "chat.welcome_text", "chat.empty_context_text"):
         if not isinstance(value, str) or not value.strip():
             raise ValueError(f"{key} 需要非空文本")
         if key == "prompt.rag_system" and CONTEXT_PLACEHOLDER not in value:
@@ -59,6 +61,9 @@ def _validate(key: str, value) -> None:
     elif key == "llm.max_tokens":
         if value is not None and not _is_number(value, 1, 32768):
             raise ValueError("max_tokens 需要是 1~32768 的数字（或留空）")
+    elif key == "llm.context_max_chars":
+        if not _is_number(value, 1000, 1000000):
+            raise ValueError("上下文预算需要是 1000~1000000 的数字（字符数）")
     elif key == "rag.distance_threshold":
         if not _is_number(value, 0, 2):
             raise ValueError("距离阈值需要是 0~2 的数字")

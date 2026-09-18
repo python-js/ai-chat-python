@@ -8,6 +8,7 @@ SSE 事件格式（自定义协议，前端 sse-transport 消费）：
     data: {"type":"done","text":"完整回答"}
 失败时输出 data: {"type":"error","message":"..."}
 """
+import asyncio
 import json
 import logging
 
@@ -15,7 +16,12 @@ from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
 
 from .app_config import load_config
-from .conversations import save_message, touch_conversation
+from .conversations import (
+    get_conversation_meta,
+    list_context_messages,
+    save_message,
+    touch_conversation,
+)
 from .llm import stream_chat
 from .mysql import is_enabled as mysql_enabled
 from .prompts import CONTEXT_PLACEHOLDER
@@ -62,6 +68,36 @@ def _sse(data: dict) -> str:
     return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
+def trim_by_budget(model_messages: list[dict], max_chars: int) -> list[dict]:
+    """输入预算裁剪：总字符超限时从最早消息丢弃（至少保留最后一条）。"""
+    total = sum(len(m["content"]) for m in model_messages)
+    while total > max_chars and len(model_messages) > 1:
+        total -= len(model_messages.pop(0)["content"])
+    return model_messages
+
+
+def _friendly_error(e: Exception) -> str:
+    """错误 → 用户可见文案：上下文超限（百炼 400）转友好提示，其余保留原始信息。"""
+    response = getattr(e, "response", None)
+    body = getattr(response, "text", "") or ""
+    if getattr(response, "status_code", None) == 400 and "input length" in body.lower():
+        return "当前会话上下文过长，建议压缩上下文或开启新会话"
+    return str(e)
+
+
+async def _save_partial(chat_id: str | None, full_text: str, cards: list[dict]) -> None:
+    """客户端中断（停止/断开）时的尽力落库：保存已生成文本与卡片。
+
+    shield 保护落库任务不被二次取消；Serverless 环境实例冻结窗口窄，需回归验证。
+    """
+    if not chat_id or not (full_text or cards):
+        return
+    try:
+        await asyncio.shield(save_message(chat_id, "assistant", full_text, card_data=cards or None))
+    except Exception:
+        logger.warning("中断落库失败（已生成内容未保存）", exc_info=True)
+
+
 async def stream_chat_sse(
     *,
     user_id: str,
@@ -102,13 +138,24 @@ async def stream_chat_sse(
     # 订单工具仅在 chat 模式且 MySQL 配置齐全时注册；rag 模式与未配置时链路与原先完全一致
     tools = TOOLS if (is_chat_mode and mysql_enabled()) else None
 
-    model_messages = to_model_messages(messages)
+    # 上下文以 DB 为权威来源（支持压缩点过滤）；无会话 id 时回退前端消息
+    if chat_id:
+        meta = await get_conversation_meta(chat_id) or {}
+        model_messages = await list_context_messages(chat_id, meta.get("summaryUpToId"))
+        if meta.get("summary"):
+            # 压缩摘要拼接进 system，替代被压缩的历史消息
+            system = f"{system}\n\n【历史对话摘要】\n{meta['summary']}"
+    else:
+        model_messages = to_model_messages(messages)
+    # 输入预算裁剪：超过 llm.context_max_chars 时从最早消息静默丢弃
+    model_messages = trim_by_budget(model_messages, config["llm.context_max_chars"])
 
     async def event_stream():
+        # 提前初始化：取消/异常分支需访问已生成内容
+        cards: list[dict] = []
+        full_text = ""
         try:
             yield _sse({"type": "start"})
-            cards: list[dict] = []
-            full_text = ""
 
             for step in range(MAX_STEPS):
                 is_last = step == MAX_STEPS - 1
@@ -196,8 +243,12 @@ async def stream_chat_sse(
             if chat_id and (full_text or cards):
                 await save_message(chat_id, "assistant", full_text, card_data=cards or None)
             yield _sse({"type": "done", "text": full_text})
+        except asyncio.CancelledError:
+            # 客户端中断（用户点停止/连接断开）：尽力保存已生成部分，再继续抛出取消
+            await _save_partial(chat_id, full_text, cards)
+            raise
         except Exception as e:
             logger.exception("聊天流式处理失败")
-            yield _sse({"type": "error", "message": str(e)})
+            yield _sse({"type": "error", "message": _friendly_error(e)})
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

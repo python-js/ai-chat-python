@@ -45,12 +45,14 @@ model DocumentChunk {
 
 // 会话表
 model Conversation {
-  id        String    @id @default(cuid())
-  userId    String
-  title     String    @default("新对话")
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  messages  Message[]
+  id            String    @id @default(cuid())
+  userId        String
+  title         String    @default("新对话")
+  summary       String? // 上下文压缩摘要（NULL = 未压缩）
+  summaryUpToId String? // 压缩点：被压缩的最后一条消息 id
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  messages      Message[]
 
   @@index([userId, updatedAt])
 }
