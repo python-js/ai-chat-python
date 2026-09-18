@@ -1,5 +1,5 @@
 // 文档列表 SSR 查询期间的过渡态（Next.js 约定：自动包裹 page）
-export default function DocsLoading() {
+export default function ComponentLoading() {
   return (
     <div className="flex min-h-0 flex-1 items-center justify-center">
       <div className="flex items-center gap-1.5">

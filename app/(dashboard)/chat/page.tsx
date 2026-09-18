@@ -15,8 +15,6 @@ interface MessageDto {
 // 切换会话属于同段 searchParams 导航（React 对已挂载边界保持旧内容，loading.tsx 不生效），
 // 用 key 让 Suspense 边界随会话重新挂载 → 切换时立即显示过渡态
 // （fallback 复用 loading.tsx 同款：跨段导航时两层边界切换视觉无缝）
-// 注：以 Promise children 渲染（等价 async 组件标签）——项目 TS 5.0.2 过旧，
-// async 组件直接作为 JSX 标签会报错（React 19 类型要求 TS ≥ 5.1）
 export default async function ChatPage({
   searchParams,
 }: {
@@ -26,7 +24,7 @@ export default async function ChatPage({
 
   return (
     <Suspense key={id ?? "new"} fallback={<ChatLoading />}>
-      {ChatContent({ id })}
+      <ChatContent id={id} />
     </Suspense>
   );
 }

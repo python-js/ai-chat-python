@@ -1,12 +1,15 @@
-"use client";
-
+import { fetchBackend } from "@/lib/backend";
 import { ScrollArea } from "@/components/ui";
 import type { Doc } from "@/hooks/use-documents";
 import UploadZone from "./components/upload-zone";
 import DocumentList from "./components/document-list";
+import { Suspense } from "react";
+import Loading from "@/components/loading";
 
-// 容器：组合上传区 + 文档列表，不含业务细节；initialDocs 为 SSR 预取数据（undefined = 降级）
-export default function DocsClient({ initialDocs }: { initialDocs?: Doc[] }) {
+
+// 容器：组合上传区 + 文档列表，不含业务细节；列表数据在 Suspense 边界内独立拉取
+// （await 置于边界内的 async 子组件：挂起被内层边界捕获，标题与上传区不被阻塞，骨架真实生效）
+export default function DocsClient() {
   return (
     <ScrollArea className="min-h-0 flex-1">
       <div className="mx-auto max-w-2xl px-6 py-8">
@@ -16,8 +19,16 @@ export default function DocsClient({ initialDocs }: { initialDocs?: Doc[] }) {
         </div>
 
         <UploadZone />
-        <DocumentList initialDocs={initialDocs} />
+        <Suspense fallback={<Loading />}>
+          <DocsListContent />   {/* 数据就绪后替换骨架屏 */}
+        </Suspense>
       </div>
     </ScrollArea>
   );
+}
+
+// initialDocs 为 SSR 预取数据（undefined = 降级，交回 SWR 客户端拉取）
+async function DocsListContent() {
+  const initialDocs = (await fetchBackend<Doc[]>("/api/documents")) ?? undefined;
+  return <DocumentList initialDocs={initialDocs} />;
 }
