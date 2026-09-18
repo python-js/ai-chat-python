@@ -1,24 +1,41 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useSWRConfig } from "swr";
 import {
-    Button,
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuTrigger,
+  Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
 } from "@/components/ui";
 import { CONVERSATIONS_KEY, useConversations } from "@/hooks/use-conversations";
 import type { Conversation } from "@/hooks/use-conversations";
+
+// 会话行内容：useLinkStatus 提供点击后的行内 pending 反馈（须在 Link 后代组件中调用）
+// 小点固定占位 + 延迟渐显：快导航不闪烁，慢导航给即时反馈（同段导航 loading.tsx 不生效）
+function ConvLinkLabel({ title }: { title: string }) {
+  const { pending } = useLinkStatus();
+  return (
+    <span className="flex items-center gap-1.5">
+      <span className="min-w-0 flex-1 truncate">{title}</span>
+      <span
+        aria-hidden
+        className={`h-1.5 w-1.5 shrink-0 rounded-full bg-violet-400 transition-opacity duration-200 ${
+          pending ? "opacity-60 delay-100" : "opacity-0"
+        }`}
+      />
+    </span>
+  );
+}
 
 // 历史会话列表：SWR 自动缓存与刷新
 // 新会话产生后由 chat-client 全局 mutate CONVERSATIONS_KEY 触发更新，无需自定义事件
@@ -66,7 +83,7 @@ export default function ConversationList({ initialConversations }: { initialConv
                   : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
               }`}
             >
-              {c.title}
+              <ConvLinkLabel title={c.title} />
             </Link>
 
             {/* 「⋯」操作菜单：桌面悬停浮现，手机端常显 */}

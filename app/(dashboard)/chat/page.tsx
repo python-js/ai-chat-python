@@ -1,6 +1,8 @@
+import { Suspense } from "react";
 import { fetchBackend } from "@/lib/backend";
 import type { AppConfigDto } from "@/types/api";
 import ChatClient from "./chat-client";
+import ChatLoading from "./loading";
 import type { UIMessage } from "ai";
 
 // 消息历史（后端返回格式，与 FastAPI conversations 接口一致）
@@ -10,6 +12,11 @@ interface MessageDto {
   content: string;
 }
 
+// 切换会话属于同段 searchParams 导航（React 对已挂载边界保持旧内容，loading.tsx 不生效），
+// 用 key 让 Suspense 边界随会话重新挂载 → 切换时立即显示过渡态
+// （fallback 复用 loading.tsx 同款：跨段导航时两层边界切换视觉无缝）
+// 注：以 Promise children 渲染（等价 async 组件标签）——项目 TS 5.0.2 过旧，
+// async 组件直接作为 JSX 标签会报错（React 19 类型要求 TS ≥ 5.1）
 export default async function ChatPage({
   searchParams,
 }: {
@@ -17,6 +24,15 @@ export default async function ChatPage({
 }) {
   const { id } = await searchParams;
 
+  return (
+    <Suspense key={id ?? "new"} fallback={<ChatLoading />}>
+      {ChatContent({ id })}
+    </Suspense>
+  );
+}
+
+// 数据聚合：消息历史 + 系统配置（原 page 主体逻辑）
+async function ChatContent({ id }: { id?: string }) {
   // 打开历史会话时，SSR 聚合：服务端 fetch Python 消息历史（cookie 转发，含归属校验 403）
   // 失败或越权时降级为空历史，页面正常渲染
   let initialMessages: UIMessage[] = [];

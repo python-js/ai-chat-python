@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { memo, useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import type { UIMessage } from "ai";
 import AiAvatar from "./ai-avatar";
@@ -46,10 +46,12 @@ function ReasoningBlock({ text }: { text: string }) {
 }
 
 // 单条消息：用户右对齐紫色气泡，助手左对齐 Markdown 卡片（含折叠的推理过程）
-export default function MessageItem({ message }: { message: UIMessage }) {
+// memo：流式期间 messages 数组每次更新只替换变化的消息对象引用，
+// 历史消息引用稳定可整树跳过，避免每个 delta 全部历史消息重渲染 + markdown 重复解析
+function MessageItem({ message }: { message: UIMessage }) {
   const text = extractText(message);
   const reasoning = extractReasoning(message);
-
+  console.log("MessageItem", message);
   if (message.role === "user") {
     return (
       <div className="flex justify-end">
@@ -72,3 +74,5 @@ export default function MessageItem({ message }: { message: UIMessage }) {
     </div>
   );
 }
+
+export default memo(MessageItem);

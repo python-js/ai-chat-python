@@ -21,13 +21,16 @@ model User {
 
 // 文档表
 model Document {
-  id        String           @id @default(cuid())
-  filename  String
-  fileType  String // "pdf" | "markdown"
-  content   String? // 原始文本内容
-  status    String           @default("pending") // pending | processing | ready | error
-  createdAt DateTime         @default(now())
-  chunks    DocumentChunk[]
+  id             String           @id @default(cuid())
+  filename       String
+  fileType       String // "pdf" | "markdown"
+  content        String? // 原始文本内容
+  status         String           @default("pending") // pending | processing | ready | error
+  lastProgressAt DateTime? // 处理心跳（NULL 视为超时，为 sweep 判死依据）
+  retryCount     Int              @default(0) // 处理代数（人工重试 +1，同时作 fence 令牌）
+  lastError      String? // 最近失败原因（展示用）
+  createdAt      DateTime         @default(now())
+  chunks         DocumentChunk[]
 }
 
 // 文档分块 + 向量

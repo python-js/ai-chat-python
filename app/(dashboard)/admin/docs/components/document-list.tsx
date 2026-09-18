@@ -3,16 +3,16 @@
 import { useState } from "react";
 import { useSWRConfig } from "swr";
 import {
-    Badge,
-    Button,
-    Card,
-    CardContent,
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from "@/components/ui";
 import { DOCUMENTS_KEY, useDocuments, type Doc } from "@/hooks/use-documents";
 
@@ -23,14 +23,26 @@ const statusConfig: Record<string, { label: string; variant: "default" | "second
   error: { label: "失败", variant: "destructive" },
 };
 
-// 文档列表：SWR 驱动，展示已上传文档及处理状态，支持删除
-export default function DocumentList() {
-  const { data: docs = [] } = useDocuments();
+// 文档列表：SWR 驱动，展示已上传文档及处理状态，支持删除；initialDocs 为 SSR 预取数据
+export default function DocumentList({ initialDocs }: { initialDocs?: Doc[] }) {
+  const { data: docs = [] } = useDocuments(initialDocs);
   const { mutate } = useSWRConfig();
   // 删除确认走 Dialog 弹窗（替代原生 confirm/alert），错误提示展示在弹窗内
   const [pendingDoc, setPendingDoc] = useState<Doc | null>(null);
   const [error, setError] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
+
+  // 失败文档重试：重新入队向量化，刷新列表后轮询自动恢复
+  async function retryDoc(id: string) {
+    setRetryingId(id);
+    try {
+      await fetch(`/api/python/documents/${id}/reprocess`, { method: "POST" });
+      mutate(DOCUMENTS_KEY);
+    } finally {
+      setRetryingId(null);
+    }
+  }
 
   async function confirmDelete() {
     if (!pendingDoc) return;
@@ -86,12 +98,28 @@ export default function DocumentList() {
                   <p className="text-xs text-gray-400">
                     {doc.fileType.toUpperCase()} · {new Date(doc.createdAt).toLocaleString("zh-CN")}
                   </p>
+                  {doc.status === "error" && (
+                    <p className="mt-0.5 text-xs text-red-500">{doc.lastError || "处理失败"}</p>
+                  )}
                 </div>
               </div>
               <div className="flex items-center gap-2">
                 <Badge variant={cfg.variant} className="text-xs">
                   {cfg.label}
                 </Badge>
+                {doc.status === "error" && (
+                  <button
+                    type="button"
+                    onClick={() => retryDoc(doc.id)}
+                    disabled={retryingId === doc.id}
+                    title="重试向量化"
+                    className="rounded-md p-1.5 text-gray-300 transition-colors hover:bg-blue-50 hover:text-blue-500 disabled:opacity-50"
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+                    </svg>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => {

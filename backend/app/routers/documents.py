@@ -10,6 +10,8 @@ from ..documents import (
     delete_document,
     list_documents,
     process_document,
+    reprocess_document,
+    sweep_stale,
 )
 from ..pdf import extract_pdf_text
 
@@ -18,6 +20,8 @@ router = APIRouter(prefix="/api")
 
 @router.get("/documents")
 async def documents(user_id: Annotated[str, Depends(get_user_id)]):
+    # 懒收敛：顺带把心跳超时的死任务判死（幂等条件写，成本可忽略）
+    await sweep_stale()
     return await list_documents()
 
 
@@ -32,6 +36,7 @@ async def remove_document(
 
 
 @router.post("/documents")
+# background_tasks: BackgroundTasks 为FastAPI 提供的依赖注入对象，用来注册"响应返回之后再执行"的任务。
 async def upload(
     file: UploadFile,
     background_tasks: BackgroundTasks,
@@ -57,3 +62,15 @@ async def upload(
     # fire-and-forget 向量化：响应不等待（与现状一致）
     background_tasks.add_task(process_document, doc["id"], text)
     return {"id": doc["id"], "filename": doc["filename"], "status": doc["status"]}
+
+
+@router.post("/documents/{doc_id}/reprocess")
+async def reprocess(
+    doc_id: str,
+    background_tasks: BackgroundTasks,
+    user_id: Annotated[str, Depends(get_user_id)],
+):
+    """人工重试失败文档：重新入队向量化（仅 error 状态可重试）。"""
+    content = await reprocess_document(doc_id)
+    background_tasks.add_task(process_document, doc_id, content)
+    return {"id": doc_id, "status": "processing"}

@@ -10,6 +10,10 @@ from .config import settings
 # DashScope embedding API 单次请求上限 20 条（对齐 embedder.ts BATCH_SIZE）
 EMBEDDING_BATCH_SIZE = 20
 
+# embedding 单批请求超时（客户级 300s 对批调用过长）：卡死请求尽快失败，
+# 收窄心跳失联后旧任务仍存活的窗口（不影响 chat 流式的 300s 长读超时）
+EMBEDDING_TIMEOUT = httpx.Timeout(60, connect=10)
+
 _http_client: httpx.AsyncClient | None = None
 
 
@@ -73,6 +77,7 @@ async def embed_texts(values: list[str]) -> list[list[float]]:
         resp = await _client().post(
             "/embeddings",
             json={"model": settings.embedding_model, "input": values[i : i + EMBEDDING_BATCH_SIZE]},
+            timeout=EMBEDDING_TIMEOUT,
         )
         resp.raise_for_status()
         data = resp.json()
